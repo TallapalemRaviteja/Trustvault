@@ -41,7 +41,7 @@ This document records genuine development prompts, AI-generated outputs, defects
   1. Replaced `.local` mock domains with standard valid enterprise domains (`@trustvault.com`) across `backend/seed.py` and `backend/tests/conftest.py`.
   2. Added `email-validator>=2.2.0` explicitly to `requirements.txt`.
   3. Confirmed all authentication endpoints correctly accept sanitized enterprise email addresses and return appropriate 200/401 status codes.
-* **Git Commit Reference:** `Pending`
+* **Git Commit Reference:** `1d501b4`
 
 ---
 
@@ -61,6 +61,26 @@ This document records genuine development prompts, AI-generated outputs, defects
   1. Updated `conftest.py` session fixture to dynamically re-point `file_storage.base_dir` in-place to the temporary test directory and restore it on teardown.
   2. Introduced a `session_factory` fixture bound to the in-memory `StaticPool` test engine to ensure concurrent thread workers commit to the same cryptographic audit ledger.
   3. Executed the 34-test suite; verified 100% pass rate with intact SHA-256 hash chains across all concurrent operations.
+* **Git Commit Reference:** `1d501b4`
+
+---
+
+### Entry 4: Frontend Peer Dependency Resolution for Recharts (`react-is`) and Bundler Module Syntax
+
+* **Date:** 2026-10-24
+* **Prompt / Request Summary:**
+  Build the complete React enterprise SaaS interface across all roles (Admin, Owner, Viewer), including data visualization charts with Recharts, role-based dashboards, document management, and cryptographic audit explorer.
+* **AI-Generated Output:**
+  Running `npm run build` failed during Vite / Rolldown bundling with `Error: Rolldown failed to resolve import "react-is" from recharts/es6/util/ReactUtils.js`, and TypeScript emitted TS1484 errors due to strict `verbatimModuleSyntax` flags in Vite 9 template.
+* **Specific Defect or Limitation Discovered:**
+  1. Recharts 2.x utilizes `react-is` for React element type checking internally, but npm's `--legacy-peer-deps` omitted this indirect peer package.
+  2. Vite's new TypeScript template enabled strict `verbatimModuleSyntax` requiring explicit `import type` constructs or compatible module emission settings.
+* **How the Output Was Reviewed:**
+  Direct inspection of Vite compiler error logs and package dependency trees.
+* **Corrective Action:**
+  1. Explicitly installed `react-is` package in `frontend`.
+  2. Configured `tsconfig.app.json` compiler options to standard bundler module resolution.
+  3. Successfully verified clean production bundling of `dist/index.html` and bundled assets in 1.33 seconds.
 * **Git Commit Reference:** `Pending`
 
 ---
