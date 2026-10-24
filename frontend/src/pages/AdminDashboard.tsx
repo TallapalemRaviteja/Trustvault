@@ -3,7 +3,7 @@ import { adminApi } from '../api/admin';
 import { auditApi } from '../api/audit';
 import { usersApi } from '../api/users';
 import { AdminStats, AuditEvent, User, UserRole } from '../types';
-import { AuditBadge } from '../components/AuditBadge';
+import { useToast } from '../context/ToastContext';
 import {
   ShieldAlert,
   Users,
@@ -14,9 +14,11 @@ import {
   ShieldCheck,
   AlertTriangle,
   RotateCcw,
-  CheckCircle,
+  CheckCircle2,
   Clock,
   Key,
+  Shield,
+  Search,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -26,30 +28,36 @@ import {
   YAxis,
   Tooltip,
   Legend,
-  CartesianGrid,
 } from 'recharts';
 
 export const AdminDashboard: React.FC = () => {
+  const { showToast } = useToast();
+
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [alerts, setAlerts] = useState<AuditEvent[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [userSearch, setUserSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<any>(null);
+
+  // Status toggle confirmation modal
+  const [statusConfirmUser, setStatusConfirmUser] = useState<User | null>(null);
+  const [isUpdatingUser, setIsUpdatingUser] = useState(false);
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
       const [statsData, alertsData, usersData] = await Promise.all([
         adminApi.getStats(),
-        adminApi.getAlerts(10),
+        adminApi.getAlerts(12),
         usersApi.list(),
       ]);
       setStats(statsData);
       setAlerts(alertsData);
       setUsers(usersData);
-    } catch (err) {
-      console.error('Error fetching admin data:', err);
+    } catch (err: any) {
+      showToast(err.message || 'Error fetching admin security telemetry', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -64,173 +72,169 @@ export const AdminDashboard: React.FC = () => {
     try {
       const res = await auditApi.verifyIntegrity();
       setVerifyResult(res);
+      showToast(`Audit Chain Verified Intact (${res.total_events_checked} records).`, 'success');
       fetchDashboardData();
     } catch (err: any) {
-      alert(`Verification Request Failed: ${err.message}`);
+      showToast(`Verification Failed: ${err.message}`, 'error');
     } finally {
       setIsVerifying(false);
     }
   };
 
-  const handleToggleUserStatus = async (user: User) => {
-    const action = user.is_active ? 'disable' : 'enable';
-    if (!window.confirm(`Are you sure you want to ${action} account for ${user.email}?`)) {
-      return;
-    }
+  const handleToggleUserStatus = async (targetUser: User) => {
+    setIsUpdatingUser(true);
     try {
-      await usersApi.updateStatus(user.id, !user.is_active);
+      await usersApi.updateStatus(targetUser.id, !targetUser.is_active);
+      showToast(
+        `User ${targetUser.email} ${targetUser.is_active ? 'disabled' : 'enabled'} successfully.`,
+        'success'
+      );
+      setStatusConfirmUser(null);
       fetchDashboardData();
     } catch (err: any) {
-      alert(`Failed to update user status: ${err.message}`);
+      showToast(`Failed to update user status: ${err.message}`, 'error');
+    } finally {
+      setIsUpdatingUser(false);
     }
   };
 
   const handleChangeRole = async (userId: string, newRole: UserRole) => {
     try {
       await usersApi.updateRole(userId, newRole);
+      showToast(`Role updated to ${newRole}`, 'success');
       fetchDashboardData();
     } catch (err: any) {
-      alert(`Failed to change role: ${err.message}`);
+      showToast(`Failed to update role: ${err.message}`, 'error');
     }
   };
 
+  const filteredUsers = users.filter(
+    (u) =>
+      u.full_name?.toLowerCase().includes(userSearch.toLowerCase()) ||
+      u.email.toLowerCase().includes(userSearch.toLowerCase())
+  );
+
   if (isLoading || !stats) {
     return (
-      <div className="py-24 text-center">
-        <div className="animate-spin w-8 h-8 border-3 border-vault-500 border-t-transparent rounded-full mx-auto mb-3" />
-        <div className="text-sm font-medium text-slate-600">Gathering system-wide security metrics...</div>
+      <div className="py-24 text-center text-xs text-[#9BA8BD] flex flex-col items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#4F8CFF] border-t-transparent rounded-full animate-spin mb-3" />
+        <span>Loading Enterprise Security Operations Center telemetry...</span>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-vault-950 to-slate-950 p-6 rounded-2xl text-white shadow-xl shadow-slate-950/20 border border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6 font-sans">
+      {/* Top Banner */}
+      <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-r from-[#121A2B] via-[#162137] to-[#0B1020] border border-[#1E2C48] shadow-cyber-md flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
         <div>
-          <span className="text-[11px] font-mono uppercase tracking-widest text-purple-400">
-            Enterprise Security Operations Center
-          </span>
-          <h1 className="text-2xl font-bold tracking-tight mt-0.5">
-            Security Administration & Compliance
+          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-[10px] font-mono text-purple-300 mb-2">
+            <ShieldAlert className="w-3 h-3" />
+            Security Operations Center (SOC)
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#F4F7FC]">
+            Security Operations Center
           </h1>
-          <p className="text-xs text-slate-400 mt-1 max-w-xl">
-            Real-time aggregate activity monitoring, cryptographic ledger verification, and least-privilege identity management.
+          <p className="text-xs sm:text-sm text-[#9BA8BD] mt-1 max-w-xl">
+            System-wide audit verification, denied access telemetry, and identity lifecycle management.
           </p>
         </div>
 
-        <button
-          onClick={handleVerifyIntegrity}
-          disabled={isVerifying}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-vault-600 hover:bg-vault-500 text-white rounded-lg text-xs font-semibold shadow-md transition-colors shrink-0 disabled:opacity-50"
-        >
-          <RotateCcw className={`w-4 h-4 ${isVerifying ? 'animate-spin' : ''}`} />
-          <span>{isVerifying ? 'Verifying Hash Chain...' : 'Verify Audit Integrity'}</span>
-        </button>
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={handleVerifyIntegrity}
+            disabled={isVerifying}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs text-white bg-gradient-to-r from-[#4F8CFF] to-[#42D9E8] hover:opacity-95 shadow-cyber-glow transition-all cursor-pointer disabled:opacity-50"
+          >
+            {isVerifying ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Verifying Ledger...</span>
+              </>
+            ) : (
+              <>
+                <ShieldCheck className="w-4 h-4" />
+                <span>Verify Audit Chain</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
-      {verifyResult && (
-        <div
-          className={`p-4 rounded-xl border flex items-start gap-3 text-xs ${
-            verifyResult.is_valid
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-              : 'bg-rose-50 border-rose-200 text-rose-900'
-          }`}
-        >
-          {verifyResult.is_valid ? (
-            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-          ) : (
-            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-          )}
-          <div className="flex-1">
-            <div className="font-bold text-sm">
-              Cryptographic Audit Verification: {verifyResult.status}
-            </div>
-            <div className="mt-1 font-mono text-[11px]">
-              Traversed {verifyResult.total_events_checked} sequential events from Seq #{verifyResult.first_sequence} to #{verifyResult.last_sequence}.
-              Latest hash: <span className="font-bold">{verifyResult.last_event_hash?.substring(0, 24)}...</span>
-            </div>
-            {verifyResult.issues.length > 0 && (
-              <ul className="mt-2 list-disc list-inside text-rose-700">
-                {verifyResult.issues.map((iss: string, i: number) => (
-                  <li key={i}>{iss}</li>
-                ))}
-              </ul>
-            )}
-          </div>
+      {/* Principle of Least Privilege Callout */}
+      <div className="p-4 rounded-xl bg-[#0B1020] border border-[#1E2C48] flex items-start gap-3 text-xs text-[#9BA8BD]">
+        <Lock className="w-4 h-4 text-[#4F8CFF] shrink-0 mt-0.5" />
+        <div>
+          <span className="font-semibold text-white">Content Isolation Enforced: </span>
+          In accordance with TrustVault's security model, Administrators can manage user accounts and inspect system telemetry, but do not automatically gain access to confidential document contents unless explicitly granted permission by the Document Owner.
         </div>
-      )}
+      </div>
 
-      {/* Metrics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-medium">Total Registered Users</span>
-            <div className="p-2 rounded-lg bg-slate-50 text-slate-700">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="p-5 rounded-2xl bg-[#121A2B] border border-[#1E2C48] shadow-cyber-sm">
+          <div className="flex items-center justify-between text-[#9BA8BD] mb-2">
+            <span className="text-xs font-medium">Total Accounts</span>
+            <div className="p-2 rounded-xl bg-[#18243C] text-[#4F8CFF]">
               <Users className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">{stats.users.total}</div>
-          <div className="text-[11px] text-slate-400 mt-1 flex gap-2">
-            <span className="text-emerald-600 font-semibold">{stats.users.active} Active</span>
-            <span>•</span>
-            <span className="text-rose-600 font-semibold">{stats.users.disabled} Disabled</span>
+          <div className="text-2xl font-extrabold text-[#F4F7FC]">{stats.users.total}</div>
+          <div className="text-[11px] text-[#42D9E8] mt-2 font-mono">
+            {stats.users.disabled} disabled accounts
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-medium">Confidential Documents</span>
-            <div className="p-2 rounded-lg bg-slate-50 text-slate-700">
+        <div className="p-5 rounded-2xl bg-[#121A2B] border border-[#1E2C48] shadow-cyber-sm">
+          <div className="flex items-center justify-between text-[#9BA8BD] mb-2">
+            <span className="text-xs font-medium">Total Documents</span>
+            <div className="p-2 rounded-xl bg-[#18243C] text-emerald-400">
               <Files className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">{stats.documents.total}</div>
-          <div className="text-[11px] text-slate-400 mt-1">
-            {stats.documents.deleted} Soft-deleted
+          <div className="text-2xl font-extrabold text-[#F4F7FC]">{stats.documents.total}</div>
+          <div className="text-[11px] text-emerald-400 mt-2 font-mono">
+            Under private UUID storage
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-medium">24h Access Denials</span>
-            <div className="p-2 rounded-lg bg-rose-50 text-rose-600">
+        <div className="p-5 rounded-2xl bg-[#121A2B] border border-[#1E2C48] shadow-cyber-sm">
+          <div className="flex items-center justify-between text-[#9BA8BD] mb-2">
+            <span className="text-xs font-medium">Audit Events Recorded</span>
+            <div className="p-2 rounded-xl bg-[#18243C] text-purple-400">
+              <Key className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-extrabold text-[#F4F7FC]">{stats.integrity.total_events}</div>
+          <div className="text-[11px] text-purple-300 mt-2 font-mono">
+            SHA-256 hash-chained
+          </div>
+        </div>
+
+        <div className="p-5 rounded-2xl bg-[#121A2B] border border-[#1E2C48] shadow-cyber-sm">
+          <div className="flex items-center justify-between text-[#9BA8BD] mb-2">
+            <span className="text-xs font-medium">Denied Access (24h)</span>
+            <div className="p-2 rounded-xl bg-[#18243C] text-rose-400">
               <ShieldAlert className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-rose-600 mt-2">{stats.activity_24h.denied_attempts}</div>
-          <div className="text-[11px] text-slate-400 mt-1">
-            Unauthorized queries recorded
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-medium">Ledger Chain Status</span>
-            <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <AuditBadge
-              status={stats.integrity.status}
-              isValid={stats.integrity.is_valid}
-              totalEvents={stats.integrity.total_events}
-            />
-          </div>
-          <div className="text-[10px] text-slate-400 font-mono mt-1 truncate">
-            Head: {stats.integrity.last_event_hash?.substring(0, 16)}...
+          <div className="text-2xl font-extrabold text-rose-400">{stats.activity_24h.denied_attempts}</div>
+          <div className="text-[11px] text-rose-300 mt-2 font-mono">
+            Enforced 403 Forbidden
           </div>
         </div>
       </div>
 
-      {/* 7-Day Operations & Security Chart */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+      {/* Chart: Operations vs Denials */}
+      <div className="p-5 rounded-2xl bg-[#121A2B] border border-[#1E2C48] shadow-cyber-sm">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">7-Day Document Security Operations</h3>
-            <p className="text-xs text-slate-500">
-              Real-time comparison between authorized operations and denied access attempts.
+            <h2 className="text-sm font-bold text-[#F4F7FC]">
+              7-Day Operations vs Security Denials
+            </h2>
+            <p className="text-xs text-[#9BA8BD]">
+              Comparison of authorized actions against blocked access attempts
             </p>
           </div>
         </div>
@@ -238,90 +242,111 @@ export const AdminDashboard: React.FC = () => {
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={stats.activity_chart} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
-              <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
+              <XAxis dataKey="date" stroke="#9BA8BD" fontSize={11} tickLine={false} />
+              <YAxis stroke="#9BA8BD" fontSize={11} tickLine={false} />
               <Tooltip
-                contentStyle={{ backgroundColor: '#0f172a', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
+                contentStyle={{
+                  backgroundColor: '#0B1020',
+                  borderColor: '#1E2C48',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  color: '#F4F7FC',
+                }}
               />
-              <Legend wrapperStyle={{ fontSize: '12px' }} />
-              <Bar dataKey="success" name="Authorized Operations" fill="#0284c7" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="denied" name="Denied Access Attempts" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+              <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+              <Bar dataKey="success" name="Authorized Operations" fill="#4F8CFF" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="denied" name="Blocked Denials" fill="#EF4444" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* User Management Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+      {/* User Management Section */}
+      <div className="p-5 rounded-2xl bg-[#121A2B] border border-[#1E2C48] shadow-cyber-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#1E2C48]">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">Identity & Access Management</h3>
-            <p className="text-xs text-slate-500">
-              Manage enterprise roles and disable compromised accounts immediately.
+            <h2 className="text-sm font-bold text-[#F4F7FC]">User & Identity Management</h2>
+            <p className="text-xs text-[#9BA8BD]">
+              Assign enterprise roles and immediately disable compromised identities.
             </p>
+          </div>
+
+          <div className="relative max-w-xs w-full">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#9BA8BD]">
+              <Search className="w-4 h-4" />
+            </div>
+            <input
+              type="text"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              placeholder="Search user by name or email..."
+              className="w-full pl-9 pr-3 py-1.5 bg-[#0B1020] border border-[#1E2C48] rounded-xl text-xs text-white placeholder-[#9BA8BD]/60 focus:outline-none focus:border-[#4F8CFF]"
+            />
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider">
-                <th className="py-3 px-4">User</th>
-                <th className="py-3 px-4">Current Role</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Created</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+              <tr className="border-b border-[#1E2C48] text-[#9BA8BD] text-[11px] font-mono uppercase">
+                <th className="pb-3 font-medium">User</th>
+                <th className="pb-3 font-medium">Role</th>
+                <th className="pb-3 font-medium">Account Status</th>
+                <th className="pb-3 font-medium">Created</th>
+                <th className="pb-3 font-medium text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {users.map((u) => (
-                <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
-                  <td className="py-3 px-4">
-                    <div className="font-semibold text-slate-900">{u.full_name}</div>
-                    <div className="text-[11px] text-slate-400 font-mono">{u.email}</div>
+            <tbody className="divide-y divide-[#1E2C48]">
+              {filteredUsers.map((u) => (
+                <tr key={u.id} className="text-[#F4F7FC] hover:bg-[#162137]/40 transition-colors">
+                  <td className="py-3 pr-2">
+                    <div className="font-semibold text-white">{u.full_name}</div>
+                    <div className="text-[11px] text-[#9BA8BD] font-mono">{u.email}</div>
                   </td>
-
-                  <td className="py-3 px-4">
+                  <td className="py-3">
                     <select
                       value={u.role}
                       onChange={(e) => handleChangeRole(u.id, e.target.value as UserRole)}
-                      className="px-2.5 py-1 bg-white border border-slate-200 rounded text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-vault-500"
+                      className="px-2 py-1 bg-[#0B1020] border border-[#1E2C48] rounded-lg text-xs font-mono text-[#42D9E8] focus:outline-none"
                     >
-                      <option value="admin">Administrator</option>
-                      <option value="owner">Document Owner</option>
-                      <option value="viewer">Viewer</option>
+                      <option value="admin">admin</option>
+                      <option value="owner">owner</option>
+                      <option value="viewer">viewer</option>
                     </select>
                   </td>
-
-                  <td className="py-3 px-4">
+                  <td className="py-3">
                     {u.is_active ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <UserCheck className="w-3 h-3" />
-                        Active
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> ACTIVE
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-                        <UserX className="w-3 h-3" />
-                        Disabled
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400" /> DISABLED
                       </span>
                     )}
                   </td>
-
-                  <td className="py-3 px-4 font-mono text-slate-500 text-[11px]">
+                  <td className="py-3 text-[#9BA8BD] font-mono text-[11px]">
                     {new Date(u.created_at).toLocaleDateString()}
                   </td>
-
-                  <td className="py-3 px-4 text-right">
+                  <td className="py-3 text-right">
                     <button
-                      onClick={() => handleToggleUserStatus(u)}
-                      className={`px-3 py-1 rounded text-xs font-semibold border transition-colors ${
+                      type="button"
+                      onClick={() => setStatusConfirmUser(u)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                         u.is_active
-                          ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                          ? 'text-rose-400 hover:bg-rose-500/20 border border-rose-500/30'
+                          : 'text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30'
                       }`}
                     >
-                      {u.is_active ? 'Disable Account' : 'Enable Account'}
+                      {u.is_active ? (
+                        <>
+                          <UserX className="w-3.5 h-3.5" /> Disable
+                        </>
+                      ) : (
+                        <>
+                          <UserCheck className="w-3.5 h-3.5" /> Enable
+                        </>
+                      )}
                     </button>
                   </td>
                 </tr>
@@ -331,65 +356,46 @@ export const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Security Alerts / Access Denials */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-500" />
-              Recent Security Incidents & Denied Requests
+      {/* User Status Confirmation Modal */}
+      {statusConfirmUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-[#121A2B] border border-[#1E2C48] rounded-2xl max-w-md w-full p-6 shadow-cyber-lg">
+            <h3 className="text-base font-bold text-white mb-2">
+              {statusConfirmUser.is_active ? 'Disable Compromised Account' : 'Re-enable Account'}
             </h3>
-            <p className="text-xs text-slate-500">
-              Audit records where authorization or authentication was rejected by the server.
+            <p className="text-xs text-[#9BA8BD] leading-relaxed mb-4">
+              Are you sure you want to {statusConfirmUser.is_active ? 'disable' : 'enable'} access for{' '}
+              <strong className="text-white">{statusConfirmUser.email}</strong>?
+              {statusConfirmUser.is_active && (
+                <span className="block mt-2 text-rose-300 font-mono text-[11px] p-2 bg-rose-500/10 rounded-lg border border-rose-500/20">
+                  Their session will be terminated and all subsequent API requests will return 401 Unauthorized immediately.
+                </span>
+              )}
             </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setStatusConfirmUser(null)}
+                className="px-4 py-2 bg-[#162137] text-white text-xs font-semibold rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleUserStatus(statusConfirmUser)}
+                disabled={isUpdatingUser}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold text-white ${
+                  statusConfirmUser.is_active
+                    ? 'bg-rose-600 hover:bg-rose-500'
+                    : 'bg-emerald-600 hover:bg-emerald-500'
+                }`}
+              >
+                {isUpdatingUser ? 'Updating...' : 'Confirm'}
+              </button>
+            </div>
           </div>
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider">
-                <th className="py-3 px-4">Action</th>
-                <th className="py-3 px-4">Actor</th>
-                <th className="py-3 px-4">Outcome</th>
-                <th className="py-3 px-4">Details / Metadata</th>
-                <th className="py-3 px-4 text-right">Timestamp</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-              {alerts.map((al) => (
-                <tr key={al.id} className="hover:bg-rose-50/20 transition-colors">
-                  <td className="py-3 px-4 font-bold text-rose-600">
-                    {al.action}
-                  </td>
-                  <td className="py-3 px-4 text-slate-800 font-sans">
-                    {al.actor_email || 'Unauthenticated Client'}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">
-                      {al.outcome}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-slate-500 truncate max-w-sm">
-                    {al.metadata_json}
-                  </td>
-                  <td className="py-3 px-4 text-right text-slate-400">
-                    {new Date(al.timestamp).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-
-              {alerts.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-400 font-sans text-xs">
-                    No security alerts or denied requests recorded.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { documentsApi } from '../api/documents';
 import { DocumentItem } from '../types';
 import { SensitivityBadge } from '../components/SensitivityBadge';
-import { PermissionBadge } from '../components/PermissionBadge';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import {
   Search,
   Filter,
@@ -18,30 +19,38 @@ import {
   RotateCcw,
   Trash2,
   AlertCircle,
+  LayoutGrid,
+  List,
+  FileKey2,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  MoreVertical,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 
 export const DocumentLibraryPage: React.FC = () => {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
 
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [pageSize] = useState(8);
+  const [pageSize] = useState(9);
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const [category, setCategory] = useState('');
   const [sensitivity, setSensitivity] = useState('');
   const [includeDeleted, setIncludeDeleted] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const fetchDocuments = async () => {
     setIsLoading(true);
-    setError(null);
     try {
       const data = await documentsApi.list({
         search: search || undefined,
@@ -55,7 +64,7 @@ export const DocumentLibraryPage: React.FC = () => {
       setTotal(data.total);
       setTotalPages(data.total_pages);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch documents.');
+      showToast(err.message || 'Failed to fetch documents', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -72,13 +81,15 @@ export const DocumentLibraryPage: React.FC = () => {
   };
 
   const handleDownload = async (doc: DocumentItem) => {
+    setDownloadingId(doc.id);
     try {
-      setActionMessage(`Downloading ${doc.original_filename}...`);
+      showToast(`Rechecking live authorization for ${doc.original_filename}...`, 'info', 2000);
       await documentsApi.download(doc.id, doc.original_filename);
-      setActionMessage(null);
+      showToast(`Download granted: ${doc.original_filename}`, 'success');
     } catch (err: any) {
-      alert(`Download Denied: ${err.message}`);
-      setActionMessage(null);
+      showToast(`Download Denied: ${err.message || 'Unauthorized download attempt blocked.'}`, 'error', 6000);
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -86,301 +97,449 @@ export const DocumentLibraryPage: React.FC = () => {
     if (!window.confirm(`Are you sure you want to delete "${doc.title}"?`)) return;
     try {
       await documentsApi.delete(doc.id);
+      showToast(`Document "${doc.title}" deleted (retained in audit log)`, 'success');
       fetchDocuments();
     } catch (err: any) {
-      alert(`Delete Failed: ${err.message}`);
+      showToast(`Delete failed: ${err.message}`, 'error');
     }
   };
 
   const handleRestore = async (doc: DocumentItem) => {
     try {
       await documentsApi.restore(doc.id);
+      showToast(`Document "${doc.title}" restored successfully`, 'success');
       fetchDocuments();
     } catch (err: any) {
-      alert(`Restore Failed: ${err.message}`);
+      showToast(`Restore failed: ${err.message}`, 'error');
     }
   };
 
-  const getFileIcon = (mimeType: string) => {
-    if (mimeType.includes('pdf')) return <FileText className="w-5 h-5 text-rose-500" />;
-    if (mimeType.includes('spreadsheet') || mimeType.includes('csv'))
-      return <FileSpreadsheet className="w-5 h-5 text-emerald-500" />;
-    if (mimeType.includes('json') || mimeType.includes('code'))
-      return <FileCode className="w-5 h-5 text-amber-500" />;
-    return <File className="w-5 h-5 text-blue-500" />;
+  // Helper for file type icons
+  const getFileIcon = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    if (ext === 'pdf') return <FileText className="w-5 h-5 text-rose-400" />;
+    if (['xlsx', 'xls', 'csv'].includes(ext || ''))
+      return <FileSpreadsheet className="w-5 h-5 text-emerald-400" />;
+    if (['json', 'ts', 'js', 'py', 'yaml', 'yml'].includes(ext || ''))
+      return <FileCode className="w-5 h-5 text-[#42D9E8]" />;
+    return <File className="w-5 h-5 text-[#4F8CFF]" />;
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  // Client sort for the currently loaded page
+  const sortedDocuments = [...documents].sort((a, b) => {
+    if (sortBy === 'name') {
+      const cmp = a.title.localeCompare(b.title);
+      return sortOrder === 'asc' ? cmp : -cmp;
+    }
+    const cmp = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
+    return sortOrder === 'asc' ? cmp : -cmp;
+  });
+
+  const toggleSort = (type: 'date' | 'name') => {
+    if (sortBy === type) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(type);
+      setSortOrder('desc');
+    }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6 font-sans">
+      {/* Top Header */}
+      <div className="p-6 rounded-2xl bg-[#121A2B] border border-[#1E2C48] shadow-cyber-md flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Document Repository
+          <h1 className="text-2xl font-bold tracking-tight text-[#F4F7FC]">
+            Document Library
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Server-side authorization enforced. Only discovering permitted confidential assets.
+          <p className="text-xs text-[#9BA8BD] mt-1">
+            Browse and manage confidential documents guarded under explicit document-level authorization.
           </p>
         </div>
 
-        {user?.role !== 'viewer' && (
-          <Link
-            to="/upload"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-vault-600 hover:bg-vault-500 text-white text-sm font-semibold rounded-lg shadow-sm shadow-vault-900/10 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Upload Document
-          </Link>
+        {(user?.role === 'owner' || user?.role === 'admin') && (
+          <div className="flex items-center gap-3">
+            <Link
+              to="/upload"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs text-white bg-gradient-to-r from-[#4F8CFF] to-[#42D9E8] hover:opacity-95 shadow-cyber-glow transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              Upload Document
+            </Link>
+          </div>
         )}
       </div>
 
-      {actionMessage && (
-        <div className="p-3 bg-sky-50 text-sky-800 text-xs font-medium rounded-lg border border-sky-200">
-          {actionMessage}
-        </div>
-      )}
-
       {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
-        <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400 pointer-events-none" />
+      <div className="p-4 rounded-xl bg-[#121A2B] border border-[#1E2C48] space-y-3">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+          {/* Search Box */}
+          <form onSubmit={handleSearchSubmit} className="relative flex-1 w-full">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#9BA8BD]">
+              <Search className="w-4 h-4" />
+            </div>
             <input
               type="text"
-              placeholder="Search by title, description, or tags..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-vault-500 focus:bg-white transition-all"
+              placeholder="Search by title, description, or tags..."
+              className="w-full pl-9 pr-3 py-2 bg-[#0B1020] border border-[#1E2C48] rounded-xl text-xs text-white placeholder-[#9BA8BD]/60 focus:outline-none focus:border-[#4F8CFF]"
             />
-          </div>
+          </form>
 
-          <div className="flex flex-wrap sm:flex-nowrap gap-2">
+          {/* Filter Dropdowns & View Toggles */}
+          <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+            {/* Category Filter */}
             <select
               value={category}
               onChange={(e) => {
                 setCategory(e.target.value);
                 setPage(1);
               }}
-              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-vault-500"
+              className="px-3 py-2 bg-[#0B1020] border border-[#1E2C48] rounded-xl text-xs text-white focus:outline-none focus:border-[#4F8CFF]"
             >
               <option value="">All Categories</option>
               <option value="Financial">Financial</option>
               <option value="Legal">Legal</option>
-              <option value="Engineering">Engineering</option>
+              <option value="Technical">Technical</option>
               <option value="HR">HR</option>
-              <option value="Executive">Executive</option>
-              <option value="Roadmap">Roadmap</option>
+              <option value="Strategic">Strategic</option>
               <option value="General">General</option>
             </select>
 
+            {/* Sensitivity Filter */}
             <select
               value={sensitivity}
               onChange={(e) => {
                 setSensitivity(e.target.value);
                 setPage(1);
               }}
-              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-vault-500"
+              className="px-3 py-2 bg-[#0B1020] border border-[#1E2C48] rounded-xl text-xs text-white focus:outline-none focus:border-[#4F8CFF]"
             >
               <option value="">All Sensitivities</option>
-              <option value="Restricted">Restricted</option>
-              <option value="Confidential">Confidential</option>
-              <option value="Internal">Internal</option>
-              <option value="Public">Public</option>
+              <option value="INTERNAL">Internal</option>
+              <option value="CONFIDENTIAL">Confidential</option>
+              <option value="RESTRICTED">Restricted</option>
             </select>
 
-            {user?.role !== 'viewer' && (
-              <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={includeDeleted}
-                  onChange={(e) => {
-                    setIncludeDeleted(e.target.checked);
-                    setPage(1);
-                  }}
-                  className="rounded text-vault-600 focus:ring-vault-500"
-                />
-                <span>Include Deleted</span>
-              </label>
-            )}
-
-            <button
-              type="submit"
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg transition-colors"
-            >
-              Search
-            </button>
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1 bg-[#0B1020] p-1 rounded-xl border border-[#1E2C48]">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  viewMode === 'grid' ? 'bg-[#18243C] text-[#42D9E8]' : 'text-[#9BA8BD] hover:text-white'
+                }`}
+                title="Grid View"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  viewMode === 'list' ? 'bg-[#18243C] text-[#42D9E8]' : 'text-[#9BA8BD] hover:text-white'
+                }`}
+                title="List View"
+              >
+                <List className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-        </form>
+        </div>
+
+        {/* Deleted documents toggle for Admin/Owner */}
+        {(user?.role === 'admin' || user?.role === 'owner') && (
+          <div className="flex items-center justify-between text-xs text-[#9BA8BD] pt-2 border-t border-[#1E2C48]">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeDeleted}
+                onChange={(e) => setIncludeDeleted(e.target.checked)}
+                className="w-3.5 h-3.5 rounded bg-[#0B1020] border-[#1E2C48] text-[#4F8CFF] focus:ring-0"
+              />
+              <span>Include soft-deleted documents</span>
+            </label>
+
+            <span className="font-mono text-[11px] text-[#42D9E8]">
+              Showing {documents.length} of {total} documents
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Document Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        {isLoading ? (
-          <div className="py-20 text-center text-slate-400 text-sm">
-            <div className="animate-spin w-6 h-6 border-2 border-vault-500 border-t-transparent rounded-full mx-auto mb-2" />
-            Loading authorized documents...
+      {/* Main Content Area */}
+      {isLoading ? (
+        <div className="py-20 text-center text-[#9BA8BD] text-xs flex flex-col items-center justify-center">
+          <div className="w-8 h-8 border-2 border-[#4F8CFF] border-t-transparent rounded-full animate-spin mb-3" />
+          <span>Evaluating document authorization...</span>
+        </div>
+      ) : sortedDocuments.length === 0 ? (
+        /* Empty State with custom cybersecurity illustration */
+        <div className="p-12 text-center rounded-2xl bg-[#121A2B] border border-[#1E2C48] shadow-cyber-sm">
+          <div className="w-16 h-16 rounded-2xl bg-[#18243C] border border-[#4F8CFF]/20 flex items-center justify-center text-[#42D9E8] mx-auto mb-4 shadow-cyber-sm">
+            <FileText className="w-8 h-8" />
           </div>
-        ) : error ? (
-          <div className="p-8 text-center">
-            <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-2" />
-            <div className="text-sm font-semibold text-slate-800">Error Fetching Documents</div>
-            <div className="text-xs text-slate-500 mt-1">{error}</div>
-          </div>
-        ) : documents.length === 0 ? (
-          <div className="py-16 px-4 text-center">
-            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
-              <FileText className="w-6 h-6" />
+          <h3 className="text-base font-bold text-white">No Documents Found</h3>
+          <p className="text-xs text-[#9BA8BD] mt-1 max-w-sm mx-auto leading-relaxed">
+            No confidential documents matched your search and filter criteria, or none have been authorized for your role.
+          </p>
+          {(user?.role === 'owner' || user?.role === 'admin') && (
+            <div className="mt-5">
+              <Link
+                to="/upload"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-[#4F8CFF] to-[#42D9E8] shadow-cyber-glow"
+              >
+                <Plus className="w-4 h-4" />
+                Upload New Document
+              </Link>
             </div>
-            <h3 className="text-sm font-semibold text-slate-800">No Documents Found</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-              No confidential assets match your criteria or are authorized for your current role.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/75 text-slate-600 font-semibold uppercase tracking-wider">
-                  <th className="py-3 px-4">Document</th>
-                  <th className="py-3 px-4">Classification</th>
-                  <th className="py-3 px-4">Category</th>
-                  <th className="py-3 px-4">Owner</th>
-                  <th className="py-3 px-4">Size</th>
-                  <th className="py-3 px-4">Your Access</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {documents.map((doc) => (
-                  <tr
-                    key={doc.id}
-                    className={`hover:bg-slate-50/70 transition-colors ${
-                      doc.is_deleted ? 'bg-rose-50/40 opacity-75' : ''
-                    }`}
-                  >
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-100 shrink-0">
-                          {getFileIcon(doc.mime_type)}
-                        </div>
-                        <div className="min-w-0">
-                          <Link
-                            to={`/documents/${doc.id}`}
-                            className="font-semibold text-slate-900 hover:text-vault-600 text-sm truncate block"
-                          >
-                            {doc.title}
-                          </Link>
-                          <div className="text-[11px] text-slate-400 truncate font-mono">
-                            {doc.original_filename} (v{doc.current_version})
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="py-3 px-4">
-                      <SensitivityBadge level={doc.sensitivity} />
-                    </td>
-
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
-                        {doc.category}
+          )}
+        </div>
+      ) : viewMode === 'grid' ? (
+        /* Grid View */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sortedDocuments.map((doc) => (
+            <div
+              key={doc.id}
+              className={`p-5 rounded-2xl bg-[#121A2B] border transition-all shadow-cyber-sm flex flex-col justify-between group ${
+                doc.is_deleted
+                  ? 'border-rose-500/40 opacity-75'
+                  : 'border-[#1E2C48] hover:border-[#4F8CFF]/50'
+              }`}
+            >
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="p-2.5 rounded-xl bg-[#0B1020] border border-[#1E2C48]">
+                    {getFileIcon(doc.original_filename)}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {doc.is_deleted && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                        DELETED
                       </span>
-                    </td>
+                    )}
+                    <SensitivityBadge sensitivity={doc.sensitivity} />
+                  </div>
+                </div>
 
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-slate-800">{doc.owner_name || 'Owner'}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">{doc.owner_email}</div>
-                    </td>
+                <Link
+                  to={`/documents/${doc.id}`}
+                  className="text-sm font-bold text-white group-hover:text-[#42D9E8] transition-colors line-clamp-1"
+                >
+                  {doc.title}
+                </Link>
 
-                    <td className="py-3 px-4 text-slate-600 font-mono">
-                      {formatFileSize(doc.file_size_bytes)}
-                    </td>
+                <p className="text-xs text-[#9BA8BD] mt-1 line-clamp-2 min-h-[32px]">
+                  {doc.description || 'No description provided.'}
+                </p>
 
-                    <td className="py-3 px-4">
-                      <PermissionBadge permission={doc.user_effective_permission} />
-                    </td>
+                <div className="mt-4 pt-3 border-t border-[#1E2C48] text-[11px] text-[#9BA8BD] space-y-1">
+                  <div className="flex justify-between">
+                    <span>Category:</span>
+                    <span className="text-white font-medium">{doc.category}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Owner:</span>
+                    <span className="text-white font-mono truncate max-w-[140px]">
+                      {doc.owner_email}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Filename:</span>
+                    <span className="text-slate-300 font-mono truncate max-w-[140px]">
+                      {doc.original_filename}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+              {/* Action Buttons */}
+              <div className="mt-5 pt-3 border-t border-[#1E2C48] flex items-center justify-between gap-2">
+                <Link
+                  to={`/documents/${doc.id}`}
+                  className="px-3 py-1.5 rounded-xl bg-[#0B1020] hover:bg-[#162137] text-white text-xs font-semibold border border-[#1E2C48] transition-colors"
+                >
+                  Details
+                </Link>
+
+                <div className="flex items-center gap-1.5">
+                  {(user?.role === 'owner' || user?.role === 'admin') && doc.owner_id === user?.id && (
+                    <Link
+                      to="/permissions"
+                      className="p-1.5 rounded-xl text-[#9BA8BD] hover:text-[#42D9E8] hover:bg-[#162137] transition-colors"
+                      title="Manage Access"
+                    >
+                      <FileKey2 className="w-4 h-4" />
+                    </Link>
+                  )}
+
+                  {!doc.is_deleted ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDownload(doc)}
+                      disabled={downloadingId === doc.id}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#4F8CFF] to-[#42D9E8] text-white text-xs font-semibold shadow-cyber-glow transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>{downloadingId === doc.id ? 'Verifying...' : 'Download'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleRestore(doc)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md transition-all cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Restore</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* List View */
+        <div className="p-5 rounded-2xl bg-[#121A2B] border border-[#1E2C48] shadow-cyber-sm overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-[#1E2C48] text-[#9BA8BD] text-[11px] font-mono uppercase">
+                <th
+                  onClick={() => toggleSort('name')}
+                  className="pb-3 font-medium cursor-pointer hover:text-white"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Document Name</span>
+                    <ArrowUpDown className="w-3 h-3" />
+                  </div>
+                </th>
+                <th className="pb-3 font-medium">Category</th>
+                <th className="pb-3 font-medium">Sensitivity</th>
+                <th className="pb-3 font-medium">Owner</th>
+                <th
+                  onClick={() => toggleSort('date')}
+                  className="pb-3 font-medium cursor-pointer hover:text-white"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Modified</span>
+                    <ArrowUpDown className="w-3 h-3" />
+                  </div>
+                </th>
+                <th className="pb-3 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1E2C48]">
+              {sortedDocuments.map((doc) => (
+                <tr
+                  key={doc.id}
+                  className={`text-[#F4F7FC] hover:bg-[#162137]/40 transition-colors ${
+                    doc.is_deleted ? 'opacity-60 bg-rose-500/5' : ''
+                  }`}
+                >
+                  <td className="py-3 pr-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="shrink-0">{getFileIcon(doc.original_filename)}</div>
+                      <div className="min-w-0">
                         <Link
                           to={`/documents/${doc.id}`}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-vault-600 hover:bg-slate-100 transition-colors"
-                          title="View Details"
+                          className="font-semibold text-white hover:text-[#42D9E8] transition-colors truncate block max-w-xs"
                         >
-                          <Eye className="w-4 h-4" />
+                          {doc.title}
                         </Link>
-
-                        <button
-                          onClick={() => handleDownload(doc)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-vault-600 hover:bg-slate-100 transition-colors"
-                          title="Authorized Download"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
-
-                        {doc.user_effective_permission === 'OWNER' && !doc.is_deleted && (
-                          <button
-                            onClick={() => handleDelete(doc)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                            title="Delete Document"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-
-                        {doc.user_effective_permission === 'OWNER' && doc.is_deleted && (
-                          <button
-                            onClick={() => handleRestore(doc)}
-                            className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
-                            title="Restore Document"
-                          >
-                            <RotateCcw className="w-4 h-4" />
-                          </button>
-                        )}
+                        <div className="text-[10px] text-[#9BA8BD] font-mono">
+                          {doc.original_filename}
+                        </div>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                    </div>
+                  </td>
+                  <td className="py-3 text-slate-300">{doc.category}</td>
+                  <td className="py-3">
+                    <SensitivityBadge sensitivity={doc.sensitivity} />
+                  </td>
+                  <td className="py-3 text-[#9BA8BD] font-mono text-[11px]">
+                    {doc.owner_email}
+                  </td>
+                  <td className="py-3 text-[#9BA8BD] font-mono text-[11px]">
+                    {new Date(doc.updated_at).toLocaleDateString()}
+                  </td>
+                  <td className="py-3 text-right">
+                    <div className="inline-flex items-center gap-1.5">
+                      <Link
+                        to={`/documents/${doc.id}`}
+                        className="px-2.5 py-1 rounded-lg bg-[#0B1020] text-slate-300 hover:text-white border border-[#1E2C48]"
+                      >
+                        Inspect
+                      </Link>
 
-        {/* Pagination Footer */}
-        {totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between text-xs text-slate-600">
-            <div>
-              Showing <span className="font-semibold">{documents.length}</span> of{' '}
-              <span className="font-semibold">{total}</span> documents
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 transition-colors"
-              >
-                Previous
-              </button>
-              <span className="px-2 font-mono">
-                {page} / {totalPages}
-              </span>
-              <button
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 transition-colors"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+                      {!doc.is_deleted ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDownload(doc)}
+                          disabled={downloadingId === doc.id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#4F8CFF] hover:bg-[#42D9E8] text-white font-semibold transition-colors disabled:opacity-50"
+                        >
+                          <Download className="w-3 h-3" />
+                          Download
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleRestore(doc)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-semibold"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          Restore
+                        </button>
+                      )}
+
+                      {(user?.role === 'owner' || user?.role === 'admin') &&
+                        doc.owner_id === user?.id &&
+                        !doc.is_deleted && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(doc)}
+                            className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/20"
+                            title="Soft Delete Document"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between p-4 rounded-xl bg-[#121A2B] border border-[#1E2C48] text-xs text-[#9BA8BD]">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(p - 1, 1))}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#0B1020] hover:bg-[#162137] text-white disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <ChevronLeft className="w-4 h-4" /> Previous
+          </button>
+
+          <span className="font-mono">
+            Page {page} of {totalPages}
+          </span>
+
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#0B1020] hover:bg-[#162137] text-white disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Next <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

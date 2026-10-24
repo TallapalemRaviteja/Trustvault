@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { documentsApi } from '../api/documents';
 import { DocumentItem } from '../types';
 import { SensitivityBadge } from '../components/SensitivityBadge';
@@ -11,25 +12,31 @@ import {
   FileText,
   Search,
   Lock,
-  Shield,
-  AlertCircle,
-  FileSpreadsheet,
+  ShieldCheck,
+  ShieldAlert,
+  ArrowRight,
+  Files,
+  Clock,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 
 export const ViewerDashboard: React.FC = () => {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [downloadMsg, setDownloadMsg] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const fetchAccessibleDocs = async () => {
     setIsLoading(true);
     try {
       const data = await documentsApi.list({ search: search || undefined });
       setDocuments(data.items);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to load accessible documents', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -40,151 +47,245 @@ export const ViewerDashboard: React.FC = () => {
   }, []);
 
   const handleDownload = async (doc: DocumentItem) => {
+    setDownloadingId(doc.id);
     try {
-      setDownloadMsg(`Requesting authorization for ${doc.original_filename}...`);
+      showToast(`Verifying authorization for ${doc.original_filename}...`, 'info', 2000);
       await documentsApi.download(doc.id, doc.original_filename);
-      setDownloadMsg(null);
+      showToast(`Download approved & completed: ${doc.original_filename}`, 'success');
     } catch (err: any) {
-      alert(`Download Request Denied: ${err.message}`);
-      setDownloadMsg(null);
+      showToast(`Access Denied: ${err.message || 'You lack authorization for this document.'}`, 'error', 6000);
+    } finally {
+      setDownloadingId(null);
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-slate-900 to-vault-950 p-6 rounded-2xl text-white shadow-xl shadow-slate-950/20 border border-slate-800">
-        <span className="text-[11px] font-mono uppercase tracking-widest text-emerald-400">
-          Authorized Recipient Portal
-        </span>
-        <h1 className="text-2xl font-bold tracking-tight mt-0.5">
-          Shared Confidential Documents
-        </h1>
-        <p className="text-xs text-slate-400 mt-1 max-w-xl">
-          Welcome, {user?.full_name}. Here you can discover and download documents explicitly shared with your corporate account by document owners.
-        </p>
+    <div className="space-y-6 font-sans">
+      {/* Welcome Banner */}
+      <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-r from-[#121A2B] via-[#162137] to-[#0B1020] border border-[#1E2C48] shadow-cyber-md flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-[#18243C] border border-emerald-500/30 text-[10px] font-mono text-emerald-400 mb-2">
+            <ShieldCheck className="w-3 h-3" />
+            Authorized Recipient Portal Active
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#F4F7FC]">
+            Shared Documents With You
+          </h1>
+          <p className="text-xs sm:text-sm text-[#9BA8BD] mt-1 max-w-xl">
+            Welcome, {user?.full_name}. Discover and download files explicitly authorized for your account by document owners.
+          </p>
+        </div>
+
+        <div className="relative z-10 flex items-center gap-3 shrink-0">
+          <div className="p-3.5 rounded-xl bg-[#0B1020] border border-[#1E2C48] text-right">
+            <div className="text-[10px] text-[#9BA8BD] font-mono uppercase">Authorized Files</div>
+            <div className="text-2xl font-extrabold text-[#42D9E8]">{documents.length}</div>
+          </div>
+        </div>
       </div>
 
-      {downloadMsg && (
-        <div className="p-3 bg-sky-50 text-sky-800 text-xs font-medium rounded-lg border border-sky-200">
-          {downloadMsg}
-        </div>
-      )}
-
       {/* Security Scope Banner */}
-      <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+      <div className="p-4 rounded-xl bg-[#121A2B] border border-[#1E2C48] flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600">
-            <Shield className="w-5 h-5" />
+          <div className="p-2 rounded-xl bg-[#18243C] text-emerald-400">
+            <Lock className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-xs font-semibold text-slate-800">Least-Privilege Containment</div>
-            <div className="text-[11px] text-slate-500">
-              Every download rechecks live permissions. Document Owners can revoke access at any time.
+            <div className="text-xs font-semibold text-white">Live Authorization Re-Check</div>
+            <div className="text-[11px] text-[#9BA8BD]">
+              Every file download re-evaluates permissions in real time against the backend database. Revocations are instantaneous.
             </div>
           </div>
         </div>
 
-        <div className="text-right">
-          <span className="text-xs font-semibold text-slate-700">Accessible Files: </span>
-          <span className="text-sm font-bold text-vault-600">{documents.length}</span>
+        <div className="flex items-center gap-1 bg-[#0B1020] p-1 rounded-xl border border-[#1E2C48]">
+          <button
+            type="button"
+            onClick={() => setViewMode('grid')}
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              viewMode === 'grid' ? 'bg-[#18243C] text-[#42D9E8]' : 'text-[#9BA8BD] hover:text-white'
+            }`}
+            title="Grid View"
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              viewMode === 'list' ? 'bg-[#18243C] text-[#42D9E8]' : 'text-[#9BA8BD] hover:text-white'
+            }`}
+            title="List View"
+          >
+            <List className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      {/* Search Input */}
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+      {/* Search Bar */}
+      <div className="p-3 rounded-xl bg-[#121A2B] border border-[#1E2C48]">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             fetchAccessibleDocs();
           }}
-          className="flex gap-2"
+          className="flex items-center gap-2"
         >
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#9BA8BD]">
+              <Search className="w-4 h-4" />
+            </div>
             <input
               type="text"
-              placeholder="Search within your shared documents..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-vault-500"
+              placeholder="Search shared documents by title, keyword, or owner..."
+              className="w-full pl-9 pr-3 py-2 bg-[#0B1020] border border-[#1E2C48] rounded-xl text-xs text-white placeholder-[#9BA8BD]/60 focus:outline-none focus:border-[#4F8CFF]"
             />
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors"
+            className="px-4 py-2 bg-[#18243C] hover:bg-[#1E2C48] text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer"
           >
             Search
           </button>
         </form>
       </div>
 
-      {/* Accessible Document Cards */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        {isLoading ? (
-          <div className="py-16 text-center text-xs text-slate-400">Loading authorized documents...</div>
-        ) : documents.length === 0 ? (
-          <div className="py-16 px-4 text-center">
-            <Lock className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h3 className="text-sm font-semibold text-slate-800">No Documents Shared With You</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-              Document owners have not granted you permissions on any confidential assets yet.
-            </p>
-          </div>
-        ) : (
-          <table className="w-full text-left border-collapse text-xs">
+      {/* Document Library (Grid or List View) */}
+      {isLoading ? (
+        <div className="py-16 text-center text-[#9BA8BD] text-xs flex flex-col items-center justify-center">
+          <div className="w-6 h-6 border-2 border-[#4F8CFF] border-t-transparent rounded-full animate-spin mb-2" />
+          <span>Verifying access permissions...</span>
+        </div>
+      ) : documents.length === 0 ? (
+        <div className="p-12 text-center rounded-2xl bg-[#121A2B] border border-[#1E2C48] shadow-cyber-sm">
+          <FileText className="w-12 h-12 text-[#9BA8BD]/40 mx-auto mb-3" />
+          <h3 className="text-sm font-bold text-white">No Shared Documents Found</h3>
+          <p className="text-xs text-[#9BA8BD] mt-1 max-w-sm mx-auto">
+            No document owners have granted your corporate account access to documents matching your search criteria.
+          </p>
+        </div>
+      ) : viewMode === 'grid' ? (
+        /* Grid Cards */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {documents.map((doc) => (
+            <div
+              key={doc.id}
+              className="p-5 rounded-2xl bg-[#121A2B] border border-[#1E2C48] hover:border-[#4F8CFF]/50 transition-all shadow-cyber-sm flex flex-col justify-between group"
+            >
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="p-2.5 rounded-xl bg-[#0B1020] text-[#4F8CFF] border border-[#1E2C48]">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <SensitivityBadge sensitivity={doc.sensitivity} />
+                </div>
+
+                <Link
+                  to={`/documents/${doc.id}`}
+                  className="text-sm font-bold text-white group-hover:text-[#42D9E8] transition-colors line-clamp-1"
+                >
+                  {doc.title}
+                </Link>
+
+                <p className="text-xs text-[#9BA8BD] mt-1 line-clamp-2 min-h-[32px]">
+                  {doc.description || 'No description provided.'}
+                </p>
+
+                <div className="mt-4 pt-3 border-t border-[#1E2C48] text-[11px] text-[#9BA8BD] space-y-1">
+                  <div className="flex justify-between">
+                    <span>Category:</span>
+                    <span className="text-white font-medium">{doc.category}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Owner:</span>
+                    <span className="text-white font-mono">{doc.owner_email}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>File:</span>
+                    <span className="text-slate-300 font-mono truncate max-w-[140px]">
+                      {doc.original_filename}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 pt-3 border-t border-[#1E2C48] flex items-center justify-between gap-2">
+                <Link
+                  to={`/documents/${doc.id}`}
+                  className="px-3 py-1.5 rounded-xl bg-[#0B1020] hover:bg-[#162137] text-white text-xs font-semibold border border-[#1E2C48] transition-colors"
+                >
+                  Inspect
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => handleDownload(doc)}
+                  disabled={downloadingId === doc.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#4F8CFF] to-[#42D9E8] hover:opacity-95 text-white text-xs font-semibold shadow-cyber-glow transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{downloadingId === doc.id ? 'Verifying...' : 'Download'}</span>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* List View */
+        <div className="p-5 rounded-2xl bg-[#121A2B] border border-[#1E2C48] shadow-cyber-sm overflow-x-auto">
+          <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-500 font-semibold uppercase tracking-wider">
-                <th className="py-3 px-4">Document</th>
-                <th className="py-3 px-4">Classification</th>
-                <th className="py-3 px-4">Category</th>
-                <th className="py-3 px-4">Owner</th>
-                <th className="py-3 px-4">Access Level</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+              <tr className="border-b border-[#1E2C48] text-[#9BA8BD] text-[11px] font-mono uppercase">
+                <th className="pb-3 font-medium">Document Name</th>
+                <th className="pb-3 font-medium">Category</th>
+                <th className="pb-3 font-medium">Sensitivity</th>
+                <th className="pb-3 font-medium">Owner</th>
+                <th className="pb-3 font-medium">Modified</th>
+                <th className="pb-3 font-medium text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#1E2C48]">
               {documents.map((doc) => (
-                <tr key={doc.id} className="hover:bg-slate-50/60 transition-colors">
-                  <td className="py-3 px-4">
+                <tr key={doc.id} className="text-[#F4F7FC] hover:bg-[#162137]/40 transition-colors">
+                  <td className="py-3 pr-2">
                     <Link
                       to={`/documents/${doc.id}`}
-                      className="font-semibold text-slate-900 hover:text-vault-600 text-sm block"
+                      className="font-semibold text-white hover:text-[#42D9E8] transition-colors block"
                     >
                       {doc.title}
                     </Link>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {doc.original_filename} ({(doc.file_size_bytes / 1024).toFixed(1)} KB)
-                    </span>
+                    <div className="text-[10px] text-[#9BA8BD] font-mono">
+                      {doc.original_filename}
+                    </div>
                   </td>
-                  <td className="py-3 px-4">
-                    <SensitivityBadge level={doc.sensitivity} />
+                  <td className="py-3 text-slate-300">{doc.category}</td>
+                  <td className="py-3">
+                    <SensitivityBadge sensitivity={doc.sensitivity} />
                   </td>
-                  <td className="py-3 px-4 text-slate-700 font-medium">
-                    {doc.category}
+                  <td className="py-3 text-[#9BA8BD] font-mono text-[11px]">
+                    {doc.owner_email}
                   </td>
-                  <td className="py-3 px-4">
-                    <div className="text-slate-900 font-medium">{doc.owner_name}</div>
-                    <div className="text-[10px] text-slate-400 font-mono">{doc.owner_email}</div>
+                  <td className="py-3 text-[#9BA8BD] font-mono text-[11px]">
+                    {new Date(doc.updated_at).toLocaleDateString()}
                   </td>
-                  <td className="py-3 px-4">
-                    <PermissionBadge permission={doc.user_effective_permission} />
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <div className="flex items-center justify-end gap-1">
+                  <td className="py-3 text-right">
+                    <div className="inline-flex items-center gap-2">
                       <Link
                         to={`/documents/${doc.id}`}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-vault-600 hover:bg-slate-100 transition-colors"
-                        title="View Details"
+                        className="px-2.5 py-1 rounded-lg bg-[#0B1020] text-slate-300 hover:text-white border border-[#1E2C48]"
                       >
-                        <Eye className="w-4 h-4" />
+                        Inspect
                       </Link>
                       <button
+                        type="button"
                         onClick={() => handleDownload(doc)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-vault-600 hover:bg-slate-100 transition-colors"
-                        title="Authorized Download"
+                        disabled={downloadingId === doc.id}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#4F8CFF] hover:bg-[#42D9E8] text-white font-semibold transition-colors disabled:opacity-50"
                       >
-                        <Download className="w-4 h-4" />
+                        <Download className="w-3 h-3" />
+                        Download
                       </button>
                     </div>
                   </td>
@@ -192,8 +293,8 @@ export const ViewerDashboard: React.FC = () => {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
