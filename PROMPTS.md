@@ -81,6 +81,25 @@ This document records genuine development prompts, AI-generated outputs, defects
   1. Explicitly installed `react-is` package in `frontend`.
   2. Configured `tsconfig.app.json` compiler options to standard bundler module resolution.
   3. Successfully verified clean production bundling of `dist/index.html` and bundled assets in 1.33 seconds.
+* **Git Commit Reference:** `d228adf`
+
+---
+
+### Entry 5: Production Containerization, Least-Privilege Execution & Comprehensive Documentation
+
+* **Date:** 2026-10-24
+* **Prompt / Request Summary:**
+  Prepare complete production deployment configurations (Docker Compose, multi-stage Dockerfiles, Nginx reverse proxy), compile end-to-end documentation (`README.md`, `THREATS.md`, `SECURITY.md`, `API.md`, `PROJECT_REPORT.md`, `DEMO_SCRIPT.md`), and perform final system review.
+* **AI-Generated Output:**
+  Generated Docker compose topology coordinating PostgreSQL 16 Alpine, unprivileged Python 3.12 FastAPI container, and Nginx SPA proxy. Created multi-stage Dockerfile configurations with non-root user (`trustvault:10001`).
+* **Specific Defect or Limitation Discovered:**
+  Containerized backend environments running as non-root users encounter permission errors if runtime upload directories (`/app/private_storage`) are created by root at container initialization. Furthermore, CORS origins required dynamic resolution to accommodate both development (`5173`) and production reverse-proxy (`80`) ports.
+* **How the Output Was Reviewed:**
+  Inspected Dockerfile user assignment, healthcheck definitions, volume mounts, and Nginx proxy headers (`X-Real-IP`, `X-Forwarded-For`, `nosniff`, `Content-Security-Policy`).
+* **Corrective Action:**
+  1. Explicitly created `/app/private_storage` with `chown -R trustvault:trustvault` in `backend/Dockerfile` prior to switching to `USER trustvault`.
+  2. Implemented Docker container health checks using native `pg_isready` and `curl -f /api/system/health`.
+  3. Finalized all 7 core project documents and confirmed zero remaining lint or build defects.
 * **Git Commit Reference:** `Pending`
 
 ---

@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: trustvault-db
+    environment:
+      POSTGRES_USER: trustvault
+      POSTGRES_PASSWORD: trustvault_secure_password_2026!
+      POSTGRES_DB: trustvault
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trustvault -d trustvault"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - trustvault-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: trustvault-backend
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://trustvault:trustvault_secure_password_2026!@db:5432/trustvault
+      SECRET_KEY: trustvault-super-secure-jwt-production-secret-key-32chars!
+      AUDIT_CHECKPOINT_KEY: trustvault-audit-hmac-checkpoint-production-key-32ch!
+      STORAGE_BACKEND: local
+      LOCAL_STORAGE_PATH: /app/private_storage
+      MAX_UPLOAD_SIZE_BYTES: 26214400
+      CORS_ORIGINS: http://localhost,http://localhost:80,http://localhost:5173
+    volumes:
+      - private_storage_data:/app/private_storage
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - trustvault-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: trustvault-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - trustvault-net
+
+volumes:
+  postgres_data:
+    driver: local
+  private_storage_data:
+    driver: local
+
+networks:
+  trustvault-net:
+    driver: bridge
