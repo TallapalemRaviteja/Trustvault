@@ -4,23 +4,27 @@
 
 @layer base {
   :root {
-    --bg-primary: #0B1020;
-    --bg-secondary: #121A2B;
-    --text-primary: #F4F7FC;
-    --text-secondary: #9BA8BD;
-    --border-color: #1E2C48;
-  }
-
-  html.light {
     --bg-primary: #F8FAFC;
     --bg-secondary: #FFFFFF;
     --text-primary: #0F172A;
     --text-secondary: #64748B;
     --border-color: #E2E8F0;
+    --accent-mint: #10B981;
+    --accent-mint-light: #D1FAE5;
+  }
+
+  html.dark {
+    --bg-primary: #0B1020;
+    --bg-secondary: #121A2B;
+    --text-primary: #F4F7FC;
+    --text-secondary: #9BA8BD;
+    --border-color: #1E2C48;
+    --accent-mint: #10B981;
+    --accent-mint-light: rgba(16, 185, 129, 0.15);
   }
 
   body {
-    @apply antialiased font-sans min-h-screen selection:bg-[#4F8CFF]/30 selection:text-[#42D9E8];
+    @apply antialiased font-sans min-h-screen selection:bg-emerald-500/20 selection:text-emerald-700 dark:selection:text-emerald-300;
     background-color: var(--bg-primary);
     color: var(--text-primary);
   }
@@ -32,56 +36,39 @@
   height: 6px;
 }
 
-.dark ::-webkit-scrollbar-track {
-  background: #0B1020;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
 .dark ::-webkit-scrollbar-thumb {
   background: #1E2C48;
-  border-radius: 9999px;
 }
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #2E436B;
 }
 
-.light ::-webkit-scrollbar-track {
-  background: #F1F5F9;
-}
-.light ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 9999px;
-}
-.light ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+/* Crisp Clean Card Styles */
+.dashboard-card {
+  @apply bg-white dark:bg-[#121A2B] border border-slate-200/80 dark:border-[#1E2C48] rounded-2xl shadow-soft-sm hover:shadow-soft-md transition-all duration-200;
 }
 
-/* Cybersecurity Grid Pattern Background */
-.cyber-grid {
-  background-size: 32px 32px;
-  background-image: 
-    linear-gradient(to right, rgba(79, 140, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(79, 140, 255, 0.05) 1px, transparent 1px);
+.dashboard-card-interactive {
+  @apply bg-white dark:bg-[#121A2B] border border-slate-200/80 dark:border-[#1E2C48] rounded-2xl shadow-soft-sm hover:shadow-soft-md hover:border-slate-300 dark:hover:border-[#2E436B] transition-all duration-200 cursor-pointer;
 }
 
-.light .cyber-grid {
-  background-size: 32px 32px;
-  background-image: 
-    linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+/* Subtle Grid Background Pattern */
+.bg-dot-pattern {
+  background-image: radial-gradient(#CBD5E1 1px, transparent 1px);
+  background-size: 24px 24px;
 }
-
-/* Subtle Glowing Borders */
-.cyber-border-glow {
-  position: relative;
-}
-.cyber-border-glow::after {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(79, 140, 255, 0.4), rgba(66, 217, 232, 0.1), transparent 70%);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
+.dark .bg-dot-pattern {
+  background-image: radial-gradient(rgba(79, 140, 255, 0.08) 1px, transparent 1px);
 }

@@ -14,7 +14,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setThemeState] = useState<Theme>(() => {
     const saved = localStorage.getItem('trustvault-theme');
     if (saved === 'light' || saved === 'dark') return saved;
-    return 'dark'; // Midnight navy is the signature cybersecurity theme
+    return 'light'; // Fresh mint green / clean off-white SaaS theme
   });
 
   useEffect(() => {

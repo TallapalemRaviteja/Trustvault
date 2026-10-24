@@ -8,6 +8,18 @@ export default {
   theme: {
     extend: {
       colors: {
+        mint: {
+          50: '#ECFDF5',
+          100: '#D1FAE5',
+          200: '#A7F3D0',
+          300: '#6EE7B7',
+          400: '#34D399',
+          500: '#10B981',
+          600: '#059669',
+          700: '#047857',
+          800: '#065F46',
+          900: '#064E3B',
+        },
         cyber: {
           midnight: '#0B1020',
           slate: '#121A2B',
@@ -44,10 +56,14 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        sans: ['Inter', 'Plus Jakarta Sans', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'Courier New', 'monospace'],
       },
       boxShadow: {
+        'soft-sm': '0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px 0 rgba(0, 0, 0, 0.02)',
+        'soft-md': '0 4px 12px 0 rgba(0, 0, 0, 0.05), 0 2px 4px 0 rgba(0, 0, 0, 0.02)',
+        'soft-lg': '0 10px 25px -3px rgba(0, 0, 0, 0.06), 0 4px 6px -2px rgba(0, 0, 0, 0.03)',
+        'mint-glow': '0 4px 14px 0 rgba(16, 185, 129, 0.28)',
         'cyber-sm': '0 2px 8px -1px rgba(0, 0, 0, 0.4), 0 1px 3px -1px rgba(79, 140, 255, 0.08)',
         'cyber-md': '0 8px 24px -4px rgba(0, 0, 0, 0.5), 0 2px 8px -2px rgba(79, 140, 255, 0.12)',
         'cyber-lg': '0 16px 36px -6px rgba(0, 0, 0, 0.6), 0 4px 14px -3px rgba(66, 217, 232, 0.15)',
@@ -55,6 +71,7 @@ export default {
         'cyan-glow': '0 0 20px -3px rgba(66, 217, 232, 0.35)',
       },
       backgroundImage: {
+        'gradient-mint': 'linear-gradient(135deg, #10B981 0%, #34D399 100%)',
         'gradient-cyber': 'linear-gradient(135deg, #4F8CFF 0%, #42D9E8 100%)',
         'gradient-dark': 'linear-gradient(180deg, #121A2B 0%, #0B1020 100%)',
         'gradient-card': 'linear-gradient(180deg, rgba(22, 33, 55, 0.7) 0%, rgba(18, 26, 43, 0.9) 100%)',
