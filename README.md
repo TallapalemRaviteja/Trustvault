@@ -3,6 +3,7 @@
 [![Security First](https://img.shields.io/badge/Security-First-0284c7.svg)](SECURITY.md)
 [![Audit Integrity](https://img.shields.io/badge/Audit-SHA--256%20Hash%20Chained-10b981.svg)](THREATS.md)
 [![Tests Passing](https://img.shields.io/badge/Tests-34%20Passed%20(100%25)-10b981.svg)](PROJECT_REPORT.md)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/TallapalemRaviteja/Trustvault)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **TrustVault** is a security-critical enterprise document sharing web application designed to solve two core challenges:

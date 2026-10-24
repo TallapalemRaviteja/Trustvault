@@ -22,7 +22,3 @@ services:
         value: "26214400"
       - key: CORS_ORIGINS
         value: "*"
-    disk:
-      name: trustvault-storage
-      mountPath: /app/private_storage
-      sizeGB: 1
