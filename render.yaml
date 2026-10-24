@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: trustvault
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: AUDIT_CHECKPOINT_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:///./trustvault.db
+      - key: STORAGE_BACKEND
+        value: local
+      - key: LOCAL_STORAGE_PATH
+        value: /app/private_storage
+      - key: MAX_UPLOAD_SIZE_BYTES
+        value: "26214400"
+      - key: CORS_ORIGINS
+        value: "*"
+    disk:
+      name: trustvault-storage
+      mountPath: /app/private_storage
+      sizeGB: 1
